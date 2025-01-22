@@ -1,0 +1,4 @@
+include LICENSE
+include README.md
+include src/transaction_balance_analyzer/data/default_abi.json
+include src/transaction_balance_analyzer/data/ABC_token_data.csv
