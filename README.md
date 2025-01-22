@@ -11,15 +11,13 @@ A tool for analyzing account balance changes in Ethereum transactions. Supports 
 
 - **Tao Yan**
 - Email: yan@ifi.uzh.ch
-- Gitlab: [@tao.yan](https://gitlab.uzh.ch/tao.yan/)
 
 - **Guanda Zhao**
 - Email: guanda.zhao@uzh.ch
-- Gitlab: [@guanda.zhao](https://gitlab.uzh.ch/guanda.zhao/)
 
 - **Claudio J.Tessone**
 - Email: claudio.tessone@uzh.ch
-- Gitlab: [@claudio.tessone](https://gitlab.uzh.ch/claudio.tessone/)
+
 
 
 ## Features
