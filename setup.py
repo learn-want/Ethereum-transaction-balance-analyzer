@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="transaction_balance_analyzer",
-    version="0.1.0",
+    version="0.2.0",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
@@ -10,7 +10,8 @@ setup(
         "web3>=6.0.0",
         "pandas>=1.3.0",
         "requests>=2.25.0",
-        "tqdm>=4.65.0"  
+        "tqdm>=4.65.0",
+        "python-dateutil>=2.8.0"
     ],
     python_requires=">=3.7",
     author="Tao Yan, Guanda Zhao, Claudio J.Tessone",

@@ -14,6 +14,10 @@ from .conversion import (
     hex_to_int,
     convert_to_decimal
 )
+from .price_utils import (
+    get_token_price,
+    query_defillama
+)
 
 __all__ = [
     'get_abi_from_etherscan',
@@ -25,5 +29,7 @@ __all__ = [
     'DEPOSIT_TOPIC',
     'keep_eth_decimal',
     'hex_to_int',
-    'convert_to_decimal'
+    'convert_to_decimal',
+    'get_token_price',
+    'query_defillama'
 ] 

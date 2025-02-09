@@ -108,6 +108,13 @@ tx_hash,address,ETH,USDT,WETH
 2. Be mindful of Etherscan API rate limits when performing batch analysis
 3. Default ABI may be required for certain special contracts
 
+## Changelog
+### 0.2.0
+- Added USD value conversion feature
+- Added all_address_mode parameter
+- Optimized address merging logic
+- Improved ETH balance calculation
+
 ## Contributing
 
 Issues and Pull Requests are welcome.
