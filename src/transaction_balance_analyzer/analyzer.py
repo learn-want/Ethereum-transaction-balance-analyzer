@@ -331,10 +331,10 @@ class AccountBalanceChangeAnalyzer:
 
     def analyze_internal_transaction(self, tx_hash):
         """
-        分析内部交易，使用debug_traceTransaction并递归处理所有调用
+        Analyze internal transactions using debug_traceTransaction and recursively process all calls.
         """
         try:
-            # 使用 debug_traceTransaction 获取内部交易
+            # use debug_traceTransaction to get internal transactions
             trace_params = {
                 "tracer": "callTracer",
                 "tracerConfig": {
@@ -344,14 +344,14 @@ class AccountBalanceChangeAnalyzer:
             }
             traces = self.w3.provider.make_request("debug_traceTransaction", [tx_hash, trace_params])
             
-            print("Debug - Raw trace result:", traces)  # Debug信息
+            print("Debug - Raw trace result:", traces)  # Debug
             
             internal_data = []
             
             def process_trace(trace):
-                """递归处理trace及其子调用"""
+                """Recursively process trace and its subcalls"""
                 if isinstance(trace, dict):
-                    # 处理当前调用的value转移
+                    # Process current call's value transfer
                     if 'value' in trace and int(trace.get('value', '0x0'), 16) > 0:
                         from_addr = trace['from'].lower()
                         to_addr = trace['to'].lower()
@@ -366,7 +366,7 @@ class AccountBalanceChangeAnalyzer:
                             'value': value
                         })
                     
-                    # 递归处理子调用
+                    # Recursively process subcalls
                     if 'calls' in trace:
                         for call in trace['calls']:
                             process_trace(call)
@@ -376,7 +376,7 @@ class AccountBalanceChangeAnalyzer:
             
             print("Debug - Collected internal transactions:", internal_data)  # Debug信息
             
-            # 转换为DataFrame并按地址分组求和
+            # Convert to DataFrame and group by address to sum values
             if internal_data:
                 df = pd.DataFrame(internal_data)
                 df = df.groupby('account')['value'].sum().reset_index()
@@ -387,8 +387,8 @@ class AccountBalanceChangeAnalyzer:
             return df
             
         except Exception as e:
-            print(f"获取内部交易失败: {str(e)}")
-            # traceback.print_exc()  # 打印完整的错误堆栈
+            print(f"Failed to get internal transactions: {str(e)}")
+            # traceback.print_exc()  # print full error stack
             return pd.DataFrame(columns=['account', 'value'])
 
     def get_token_prices(self, token_addresses: list, timestamp: int) -> Dict[str, float]:
@@ -409,70 +409,91 @@ class AccountBalanceChangeAnalyzer:
                 prices[address.lower()] = price
         return prices
 
-    def get_account_balance_change(self, tx_hash, use_default_abi=True, convert_usd=False, all_address_mode=False, gas_fee=False):
+    def get_account_balance_change(self, tx_hash, use_default_abi=True, convert_usd=False, all_address_mode=False, gas_fee=True):
         """
-        获取账户余额变化
-        
-        Args:
-            tx_hash: 交易哈希
-            use_default_abi: 是否使用默认ABI
-            convert_usd: 是否转换为USD价值
-            all_address_mode: 是否显示所有地址
-            gas_fee: 是否在结果中包含gas fee的影响
+        Get account balance changes for a transaction
         """
-        # 获取外部交易和内部交易的余额变化
+        # Get balance changes from external and internal transactions
         df_external = self.analyze_external_transaction(tx_hash, use_default_abi)
         df_internal = self.analyze_internal_transaction(tx_hash)
         
-        # 获取交易费用
+        # Create token info mapping
+        token_info = {}  # {token_address: {'symbol': symbol, 'decimal': decimal}}
+        
+        # Get token info from df_external columns
+        for col in df_external.columns:
+            if col != 'address' and self.is_token_address(col):
+                token_data = self.token_data[self.token_data['address'] == col]
+                if not token_data.empty:
+                    token_info[col] = {
+                        'symbol': token_data['token_symbol'].iloc[0],
+                        'decimal': int(token_data['decimal'].iloc[0])
+                    }
+                else:
+                    try:
+                        contract = self.w3.eth.contract(address=col, abi=self.default_abi)
+                        symbol = contract.functions.symbol().call()
+                        decimal = contract.functions.decimals().call()
+                        token_info[col] = {
+                            'symbol': symbol,
+                            'decimal': decimal
+                        }
+                    except Exception as e:
+                        print(f"Failed to get token info: {str(e)}")
+                        token_info[col] = {
+                            'symbol': col,
+                            'decimal': 18
+                        }
+        
+        # Get transaction fee
         tx = self.w3.eth.get_transaction(tx_hash)
         receipt = self.w3.eth.get_transaction_receipt(tx_hash)
         gas_used = receipt['gasUsed']
         gas_price = tx['gasPrice']
-        transaction_fee = float(gas_used * gas_price) / 1e18  # 转换为ETH单位
+        transaction_fee = float(gas_used * gas_price) / 1e18  # Convert to ETH unit
         sender_address = tx['from'].lower()
         
         print(f"Debug - Transaction fee: {transaction_fee} ETH")  # Debug信息
         print(f"Debug - Transaction sender: {sender_address}")
         print(f"Debug - Including gas fee: {gas_fee}")  # Debug信息
         
-        # 收集所有涉及的地址
+        # Collect all involved addresses
         all_addresses = set()
         
-        # 从external transactions收集地址
+        # Collect addresses from external transactions
         if 'address' in df_external.columns:
             all_addresses.update(df_external['address'].str.lower())
         elif df_external.index.name == 'address':
             all_addresses.update(df_external.index.str.lower())
         
-        # 从internal transactions收集地址
+        # Collect addresses from internal transactions
         if not df_internal.empty:
             all_addresses.update(df_internal['account'].str.lower())
         
-        # 添加交易发送者地址
+        # Add transaction sender address
         all_addresses.add(sender_address)
         
-        # 创建包含所有地址的基础DataFrame
+        # Create a base DataFrame containing all addresses
         df_result = pd.DataFrame(index=list(all_addresses))
         df_result.index.name = 'address'
         
-        # 添加所有代币列，初始值为0
+        # Add all token columns, initial value is 0
         token_columns = [col for col in df_external.columns if col != 'address']
         for col in token_columns:
             df_result[col] = 0.0
         
-        # 确保有ETH列
+        # Ensure there is an ETH column
         if 'ETH' not in df_result.columns:
             df_result['ETH'] = 0.0
         
-        # 合并external transactions的数据
+        # Merge data from external transactions
         if not df_external.empty:
             if 'address' in df_external.columns:
                 df_external = df_external.set_index('address')
             for col in token_columns:
                 df_result.update(df_external[col].reindex(df_result.index))
         
-        # 合并internal transactions的ETH变化
+        # Merge ETH changes from internal transactions
         if not df_internal.empty:
             df_internal = df_internal.set_index('account')
             if 'ETH' in df_result.columns:
@@ -480,75 +501,75 @@ class AccountBalanceChangeAnalyzer:
             else:
                 df_result['ETH'] = df_internal['value']
         
-        # 根据gas_fee参数决定是否包含交易费用
+        # include transaction fee based on the gas_fee parameter
         if gas_fee:
             df_result.at[sender_address, 'ETH'] -= transaction_fee
         
-        # 如果需要转换为USD价值
         if convert_usd:
-            # 获取时间戳
-            timestamp = tx['timestamp'] if 'timestamp' in tx else self.w3.eth.get_block(tx['blockNumber'])['timestamp']
-            # dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-            
-            # 添加USD_VALUE列
+            timestamp = self.w3.eth.get_block(self.w3.eth.get_transaction(tx_hash)['blockNumber'])['timestamp']
             df_result['USD_VALUE'] = 0.0
             
-            # 获取所有代币的列（排除USD_VALUE列）
-            token_columns = [col for col in df_result.columns if col != 'USD_VALUE']
+            for col in df_result.columns:
+                if col != 'USD_VALUE':
+                    try:
+                        print(f"Processing token: {col}")
+                        
+                        if col == 'ETH':
+                            price = self.get_token_price("coingecko:ethereum", timestamp)
+                            print(f"Got ETH price at timestamp {timestamp}: {price}")
+                        else:
+                            price = self.get_token_price(f"ethereum:{col}", timestamp)
+                            print(f"Got token price for {col} at timestamp {timestamp}: {price}")
+                        
+                        if price is not None:
+                            balance = df_result[col].astype(float).fillna(0)
+                            token_value = balance * price
+                            df_result.loc[:, 'USD_VALUE'] = df_result['USD_VALUE'].astype(float) + token_value.astype(float)
+                            
+                            print(f"Added USD value for {col}:")
+                            print(f"Balance: {balance}")
+                            print(f"Price: {price}")
+                            print(f"Token value: {token_value}")
+                            print(f"Current USD_VALUE: {df_result['USD_VALUE']}")
+                    except Exception as e:
+                        print(f"Error processing {col}: {str(e)}")
+                        traceback.print_exc()
             
-            # 遍历每个代币列并计算USD价值
-            for token in token_columns:
-                try:
-                    if token == 'ETH':
-                        price = self.get_eth_price(timestamp)
-                        print(f"获取到{token}价格: {price}")
-                    else:
-                        token_address = self.get_token_address(token)
-                        print(f"获取到{token}地址: {token_address}")
-                        price = self.get_token_price(token_address, timestamp)
-                        print(f"获取到{token}价格: {price}")
-                except Exception as e:
-                    print(f"获取{token}价格失败: {str(e)}")
-                    price = 0.0
-                
-                if price:
-                    df_result['USD_VALUE'] += df_result[token].fillna(0).astype(float) * price
+            # Sort by USD_VALUE if it exists
+            if convert_usd and 'USD_VALUE' in df_result.columns:
+                df_result = df_result.sort_values('USD_VALUE', ascending=False)
         
-        # 如果不是all_address_mode，则过滤掉所有余额变化为0的地址
+        # If not all_address_mode, filter out all addresses with zero balance changes
         if not all_address_mode:
             df_result = df_result.loc[(df_result != 0).any(axis=1)]
-        
-        # 如果计算了USD价值，按USD_VALUE降序排列
-        if convert_usd and 'USD_VALUE' in df_result.columns:
-            df_result = df_result.sort_values('USD_VALUE', ascending=False)
         
         return df_result
 
     def get_token_symbol(self, token_address):
         """
-        获取代币符号
+        Get token symbol
         """
         try:
             contract = self.w3.eth.contract(address=token_address, abi=self.default_abi)
             return contract.functions.symbol().call()
         except Exception as e:
-            print(f"获取代币符号失败: {str(e)}")
+            print(f"Failed to get token symbol: {str(e)}")
             return None
 
     def is_token_address(self, value):
         """
-        判断是否为代币地址
+        Check if it's a token address
         """
         return isinstance(value, str) and value.startswith('0x')
 
     def get_token_address(self, symbol):
         """
-        根据符号获取代币地址
+        Get token address based on symbol
         """
         token_info = self.token_data[self.token_data['token_symbol'] == symbol]
         if not token_info.empty:
             return token_info['address'].iloc[0]
-        raise ValueError(f"未找到代币 {symbol} 的地址")
+        raise ValueError(f"Token {symbol} not found")
 
     def analyze_batch_transactions(self, tx_hashes: List[str], 
                                      use_default_abi: bool = False,
@@ -573,17 +594,17 @@ class AccountBalanceChangeAnalyzer:
 
     def get_transaction_data(self, tx_hash):
         """
-        获取交易数据
+        Get transaction data
         
         Args:
-            tx_hash (str): 交易哈希
+            tx_hash (str): transaction hash
             
         Returns:
-            dict: 包含交易详情的字典
+            dict: dictionary containing transaction details
         """
-        # 使用web3获取交易信息
+        # Use web3 to get transaction information
         tx = self.w3.eth.get_transaction(tx_hash)
-        # 获取交易收据
+        # Get transaction receipt
         receipt = self.w3.eth.get_transaction_receipt(tx_hash)
         
         return {
@@ -594,26 +615,26 @@ class AccountBalanceChangeAnalyzer:
 
     def process_transaction_data(self, tx_data):
         """
-        处理交易数据并创建DataFrame
+        Process transaction data and create a DataFrame
         
         Args:
-            tx_data (dict): 交易数据字典
+            tx_data (dict): transaction data dictionary
             
         Returns:
-            pd.DataFrame: 包含账户余额变化的DataFrame
+            pd.DataFrame: DataFrame containing account balance changes
         """
-        # 从交易数据中提取信息
+        # Extract information from transaction data
         tx = tx_data['transaction']
         receipt = tx_data['receipt']
         
-        # 创建用于存储结果的列表
+        # Create a list to store results
         balance_changes = []
         
-        # 处理转账信息
-        # 这里需要实现你的具体业务逻辑
-        # 例如：处理ETH转账、Token转账等
+        # Process transfer information
+        # Here you need to implement your specific business logic
+        # For example: process ETH transfers, Token transfers, etc.
         
-        # 创建DataFrame
+        # Create a DataFrame
         df = pd.DataFrame(balance_changes)
         if not df.empty:
             df.columns = ['ADDRESS', 'TOKEN_ADDRESS', 'AMOUNT', 'TOKEN_SYMBOL']
@@ -622,73 +643,73 @@ class AccountBalanceChangeAnalyzer:
 
     def add_usd_values(self, df):
         """
-        为DataFrame添加USD价值列
+        Add USD value column to DataFrame
         
         Args:
-            df (pd.DataFrame): 包含代币余额变化的DataFrame
+            df (pd.DataFrame): DataFrame containing token balance changes
             
         Returns:
-            pd.DataFrame: 添加了USD_VALUE列的DataFrame
+            pd.DataFrame: DataFrame with USD_VALUE column
         """
         if df.empty:
             df['USD_VALUE'] = []
             return df
         
-        # 复制DataFrame以避免修改原始数据
+        # Copy DataFrame to avoid modifying original data
         df = df.copy()
         
-        # 添加USD_VALUE列
+        # Add USD_VALUE column
         df['USD_VALUE'] = 0.0
         
-        # 获取交易的时间戳
-        tx_hash = df['TX_HASH'].iloc[0]  # 假设所有行都是同一笔交易
+        # Get transaction timestamp
+        tx_hash = df['TX_HASH'].iloc[0]  # Assume all rows are for the same transaction
         block_number = self.w3.eth.get_transaction(tx_hash)['blockNumber']
         timestamp = self.w3.eth.get_block(block_number)['timestamp']
         
-        # 遍历每一行
+        # Iterate through each row
         for idx, row in df.iterrows():
             token_address = row['TOKEN_ADDRESS']
             amount = row['AMOUNT']
             
             try:
-                # 如果是ETH (token_address为None或0x0)
+                # If it's ETH (token_address is None or 0x0)
                 if pd.isna(token_address) or token_address in ['0x0000000000000000000000000000000000000000', '0x0']:
                     price = self.get_eth_price(timestamp)
                     df.at[idx, 'USD_VALUE'] = float(amount) * price
                 else:
-                    # 对于其他代币，获取其价格
+                    # For other tokens, get their price
                     price = self.get_token_price(token_address, timestamp)
                     df.at[idx, 'USD_VALUE'] = float(amount) * price
             except Exception as e:
-                print(f"获取价格失败: {str(e)}")
+                print(f"Failed to get price: {str(e)}")
                 df.at[idx, 'USD_VALUE'] = None
             
         return df
 
     def get_eth_price(self, timestamp,token_identifier="coingecko:ethereum"):
         """
-        获取指定时间的ETH价格
+        Get ETH price at a specific timestamp
         
         Args:
-            timestamp (int): Unix时间戳
+            timestamp (int): Unix timestamp
             
         Returns:
-            float: ETH价格（USD）
+            float: ETH price (USD)
         """
         url = f"https://coins.llama.fi/prices/historical/{timestamp}/{token_identifier}"
 
         try:
-            # 这里应该调用实际的价格API
-            # 临时返回测试价格
+            # Here you should call the actual price API
+            # Temporary return test price
             response = requests.get(url)
             if response.status_code == 200:
                 data = response.json()
                 return data["coins"][f"{token_identifier}"]["price"]
             else:
-                print(f"获取ETH价格失败: {response.status_code}")
+                print(f"Failed to get ETH price: {response.status_code}")
                 return 0.0
         except Exception as e:
-            print(f"获取ETH价格失败: {str(e)}")
+            print(f"Failed to get ETH price: {str(e)}")
             return 0.0
     
 
@@ -708,14 +729,14 @@ class AccountBalanceChangeAnalyzer:
 
     def get_token_price(self, token_address: str, timestamp:int) -> float:
         """
-        查询特定代币在指定时间点的价格
+        Query the price of a specific token at a specific timestamp
         
         Args:
-            token_address: 代币的以太坊地址
-            date_timestamp: Unix时间戳(秒)
+            token_address: Ethereum address of the token
+            date_timestamp: Unix timestamp (seconds)
             
         Returns:
-            float: 代币价格，如果查询失败返回None
+            float: token price, return 0 if query fails
         """
         
         query_batch = {
@@ -727,7 +748,7 @@ class AccountBalanceChangeAnalyzer:
             data = self.query_defillama(f"/batchHistorical?coins={query_json}")
             
             if not data or "coins" not in data:
-                return 0.0 #如果获取不到价格，返回0
+                return 0.0 # return 0 if price is not available
                 
             prices = data["coins"].get(f"ethereum:{token_address}", {}).get("prices", [])
             if prices and len(prices) > 0:
@@ -735,5 +756,5 @@ class AccountBalanceChangeAnalyzer:
             return 0.0
             
         except Exception as e:
-            logger.error(f"获取代币价格失败: {str(e)}")
+            logger.error(f"Failed to get token price: {str(e)}")
             return 0.0
