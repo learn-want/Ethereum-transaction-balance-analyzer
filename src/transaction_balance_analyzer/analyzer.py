@@ -141,10 +141,12 @@ class AccountBalanceChangeAnalyzer:
                 sender = self.convert_to_checksum_address(log['topics'][1].hex())
                 if sender == '0x0000000000000000000000000000000000000000':  # Burn
                     sender = contract_address.lower()
+                    # sender='0x0000000000000000000000000000000000000000'
 
                 receiver = self.convert_to_checksum_address(log['topics'][2].hex())
                 if receiver == '0x0000000000000000000000000000000000000000':  # Mint
                     receiver = contract_address.lower()
+                    # receiver='0x0000000000000000000000000000000000000000'
 
                 balance_change = Decimal(int(log['data'].hex(), 16)) if log['data'].hex() != '0x' else Decimal(0)
 
@@ -510,11 +512,15 @@ class AccountBalanceChangeAnalyzer:
                     price = 0.0
                 
                 if price:
-                    df_result['USD_VALUE'] += df_result[token].astype(float) * price
+                    df_result['USD_VALUE'] += df_result[token].fillna(0).astype(float) * price
         
         # 如果不是all_address_mode，则过滤掉所有余额变化为0的地址
         if not all_address_mode:
             df_result = df_result.loc[(df_result != 0).any(axis=1)]
+        
+        # 如果计算了USD价值，按USD_VALUE降序排列
+        if convert_usd and 'USD_VALUE' in df_result.columns:
+            df_result = df_result.sort_values('USD_VALUE', ascending=False)
         
         return df_result
 
