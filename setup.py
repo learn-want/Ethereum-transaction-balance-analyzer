@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="transaction_balance_analyzer",
-    version="0.2.1",
+    version="0.2.2",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
@@ -11,7 +11,8 @@ setup(
         "pandas>=1.3.0",
         "requests>=2.25.0",
         "tqdm>=4.65.0",
-        "python-dateutil>=2.8.0"
+        "python-dateutil>=2.8.0",
+        "python-dotenv>=0.19.0"
     ],
     python_requires=">=3.7",
     author="Tao Yan, Guanda Zhao, Claudio J.Tessone",
@@ -19,7 +20,7 @@ setup(
     description="A tool for analyzing account balance changes in Ethereum transactions",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/transaction_balance_analyzer",
+    url="https://github.com/learn-want/Ethereum-transaction-balance-analyzer",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",

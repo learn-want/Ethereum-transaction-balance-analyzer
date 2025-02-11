@@ -23,11 +23,14 @@ A tool for analyzing account balance changes in Ethereum transactions. Supports 
 ## Features
 
 - Analyzes both external and internal transactions
-- Tracks ETH and ERC20 token balance changes of involved addresses
-- Automatic proxy contract detection and handling
+- Tracks ETH and ERC20 token balance changes
+- Automatic proxy contract detection
 - Supports batch transaction analysis
 - Automatic token decimal handling
-- Results output in easy-to-read CSV format for each transaction
+- USD value conversion for all tokens
+- Gas fee inclusion/exclusion option
+- Results sorted by USD value
+- dataframe output format
 
 ## Requirements
 
@@ -43,64 +46,71 @@ pip install transaction-balance-analyzer
 
 ## Configuration
 
-Set the following environment variables before use:
+Create a `.env` file in your project root:
 
 ```bash
-export ETH_NODE_URL='your_ethereum_node_url'
-export ETHERSCAN_API_KEY='your_etherscan_api_key'
+ETH_NODE_URL=your_ethereum_node_url
+ETHERSCAN_API_KEY=your_etherscan_api_key
 ```
 
 ## Usage Examples
 
 ### Basic Usage
 ```python
+from dotenv import load_dotenv
 from transaction_balance_analyzer import AccountBalanceChangeAnalyzer
-import os
 
-# Set environment variables
-os.environ['ETH_NODE_URL'] = 'your_ethereum_node_url'
-os.environ['ETHERSCAN_API_KEY'] = 'your_etherscan_api_key'
+# Load environment variables
+load_dotenv()
 
 # Initialize analyzer
 analyzer = AccountBalanceChangeAnalyzer()
 
 # Analyze single transaction
 tx_hash = "0x191aeb75d5ac81c46d97916cb88f9f02b4a6e5f854823beae99dbd6336f18928"
-result = analyzer.get_account_balance_change(tx_hash)
-print(result)
+
+# Get balance changes with USD conversion and gas fee
+result = analyzer.get_account_balance_change(
+    tx_hash,
+    convert_usd=True,    # Enable USD value conversion
+    gas_fee=False,        # Don’t include gas fee in calculations
+    all_address_mode=False  # Filter zero balance addresses
+)
 
 # Save results to CSV
-result.to_csv('analysis_result.csv', index=False)
+result.to_csv('analysis_result.csv')
 ```
 
 ### Batch Analysis
-
 ```python
 # Analyze multiple transactions
 tx_hashes = [
     "0x191aeb75d5ac81c46d97916cb88f9f02b4a6e5f854823beae99dbd6336f18928",
-    "0x40d4a421465acc8d4c63c9175e6858e614b76560fef6f46dd4694e9fba99b674",
-    "0xb50f927760c2e6b14a969d515a5ceffc5bbb7f5a0685db05c3766a90a01d63df"
+    "0x40d4a421465acc8d4c63c9175e6858e614b76560fef6f46dd4694e9fba99b674"
 ]
 
 results = analyzer.analyze_batch_transactions(tx_hashes)
 
-# Print results for each transaction
+# Process results
 for tx_hash, result in results.items():
-    print(f"\nResults for transaction {tx_hash}:")
-    print(result)
-    # Save individual results
-    result.to_csv(f'result_{tx_hash[:10]}.csv', index=False)
+    result.to_csv(f'result_{tx_hash[:10]}.csv')
 ```
 
 ### Example Output
 
-The analysis results are returned as a pandas DataFrame with the following format:
+The analysis results are returned as a pandas DataFrame:
 ```csv
-tx_hash,address,ETH,USDT,WETH
-0x123...,0xabc...,-0.5,100.0,0.0
-0x123...,0xdef...,0.5,-100.0,0.0
+address,ETH,USDT,WETH,USD_VALUE
+0xabc...,-0.5,100.0,0.0,150.25
+0xdef...,0.5,-100.0,0.0,-150.25
 ```
+
+## Parameters
+
+- `convert_usd`: Enable USD value conversion (default: True)
+- `gas_fee`: Include transaction gas fee in calculations (default: False)
+- `all_address_mode`: Show all addresses including zero balances (default: False)
+- `use_default_abi`: Use default ABI for token contracts (default: False)
 
 ## Important Notes
 
@@ -110,6 +120,7 @@ tx_hash,address,ETH,USDT,WETH
 
 ## Changelog
 ### 0.2.0
+- Order the results by USD value
 - Added USD value conversion feature
 - Added all_address_mode parameter
 - Optimized address merging logic

@@ -45,7 +45,7 @@ def is_proxy_contract(w3: Web3, contract_address: str) -> Optional[str]:
     
     return None
 
-def setup_decimal_precision(precision: int = 50) -> None:
+def setup_decimal_precision(precision: int = 5) -> None:
     """
     Setup decimal precision for calculations
     
